@@ -1,0 +1,65 @@
+import csv
+import xml.etree.ElementTree as ET
+
+def mm_to_m(val):
+    return float(val) / 1000.0
+
+def create_ecxml_from_csv(csv_path, output_path):
+    neutralXML = ET.Element("neutralXML")
+    ET.SubElement(neutralXML, "name").text = "dfsi units W/m2"
+    ET.SubElement(neutralXML, "producer").text = "Icepak"
+
+    solutionDomain = ET.SubElement(neutralXML, "solutionDomain")
+    loc = ET.SubElement(solutionDomain, "location")
+    ET.SubElement(loc, "x").text = "0.0"
+    ET.SubElement(loc, "y").text = "0.0"
+    ET.SubElement(loc, "z").text = "0.01087"
+    size = ET.SubElement(solutionDomain, "size")
+    ET.SubElement(size, "x").text = "0.2"
+    ET.SubElement(size, "y").text = "0.2"
+    ET.SubElement(size, "z").text = "6.93889e-18"
+
+    ET.SubElement(neutralXML, "materials")
+
+    geometry = ET.SubElement(neutralXML, "geometry")
+    assembly = ET.SubElement(geometry, "assembly")
+    ET.SubElement(assembly, "name").text = "G-die-generated"
+    ET.SubElement(assembly, "active").text = "true"
+    geom = ET.SubElement(assembly, "geometry")
+
+    with open(csv_path, newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            if len(row) < 7:
+                continue  # Skip incomplete rows
+
+            name, x1, y1, x2, y2, z, power = row
+            x1 = mm_to_m(x1)
+            y1 = mm_to_m(y1)
+            x2 = mm_to_m(x2)
+            y2 = mm_to_m(y2)
+            z = mm_to_m(z)
+            power = float(power)
+
+            block = ET.SubElement(geom, "source2dBlock")
+            ET.SubElement(block, "name").text = name
+            ET.SubElement(block, "active").text = "true"
+
+            location = ET.SubElement(block, "location")
+            ET.SubElement(location, "x").text = f"{(x1 + x2) / 2:.6f}"
+            ET.SubElement(location, "y").text = f"{(y1 + y2) / 2:.6f}"
+            ET.SubElement(location, "z").text = f"{z:.6f}"
+
+            size = ET.SubElement(block, "size")
+            ET.SubElement(size, "x").text = f"{abs(x2 - x1):.6f}"
+            ET.SubElement(size, "y").text = f"{abs(y2 - y1):.6f}"
+            ET.SubElement(size, "z").text = "0.001"
+
+            ET.SubElement(block, "plane").text = "+xy"
+            ET.SubElement(block, "powerDissipation").text = f"{power:.6f}"
+
+    tree = ET.ElementTree(neutralXML)
+    tree.write(output_path, encoding="utf-8", xml_declaration=True)
+
+# Example usage:
+# create_ecxml_from_csv("input.csv", "output.ecxml")
