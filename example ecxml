@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<neutralXML>
+  <name>dfsi units W/m2</name>
+  <producer>Icepak</producer>
+  <solutionDomain>
+    <location>
+      <x>0.0</x>
+      <y>0.0</y>
+      <z>0.01087</z>
+    </location>
+    <size>
+      <x>0.2</x>
+      <y>0.2</y>
+      <z>6.93889e-18</z>
+    </size>
+  </solutionDomain>
+  <materials />
+  <geometry>
+    <assembly>
+      <name>G-die-generated</name>
+      <active>true</active>
+      <geometry>
+        <source2dBlock>
+          <name>HS1</name>
+          <active>true</active>
+          <location><x>0.005</x><y>0.0225</y><z>0.01087</z></location>
+          <size><x>0.01</x><y>0.005</y><z>0.001</z></size>
+          <plane>+xy</plane>
+          <powerDissipation>1.0</powerDissipation>
+        </source2dBlock>
+        <!-- Repeated blocks HS2 to HS10 -->
+        ...
+        <source2dBlock>
+          <name>HS10</name>
+          <active>true</active>
+          <location><x>0.095</x><y>0.0225</y><z>0.01087</z></location>
+          <size><x>0.01</x><y>0.005</y><z>0.001</z></size>
+          <plane>+xy</plane>
+          <powerDissipation>1.0</powerDissipation>
+        </source2dBlock>
+      </geometry>
+    </assembly>
+  </geometry>
+</neutralXML>
