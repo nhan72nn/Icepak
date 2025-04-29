@@ -1,0 +1,78 @@
+import csv
+import xml.etree.ElementTree as ET
+import xml.dom.minidom
+
+def mm_to_m(val):
+    try:
+        return float(val) / 1000.0
+    except ValueError:
+        return 0.0
+
+def create_ecxml_from_csv(csv_path, output_path):
+    root = ET.Element("neutralXML")
+
+    # Required top-level metadata
+    ET.SubElement(root, "name").text = "dfsi units W/m2"
+    ET.SubElement(root, "producer").text = "Icepak"
+
+    # Dummy solution domain to satisfy ECXML structure
+    sol_domain = ET.SubElement(root, "solutionDomain")
+    location = ET.SubElement(sol_domain, "location")
+    ET.SubElement(location, "x").text = "0.0"
+    ET.SubElement(location, "y").text = "0.0"
+    ET.SubElement(location, "z").text = "0.0"
+
+    size = ET.SubElement(sol_domain, "size")
+    ET.SubElement(size, "x").text = "0.2"
+    ET.SubElement(size, "y").text = "0.2"
+    ET.SubElement(size, "z").text = "0.01"
+
+    ET.SubElement(root, "materials")
+
+    # Geometry block
+    geometry = ET.SubElement(root, "geometry")
+    assembly = ET.SubElement(geometry, "assembly")
+    ET.SubElement(assembly, "name").text = "G-die-generated"
+    ET.SubElement(assembly, "active").text = "true"
+    geom = ET.SubElement(assembly, "geometry")
+
+    # Read CSV and generate source2dBlock entries
+    with open(csv_path, newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            name = row["name"].strip()
+            x_start = mm_to_m(row["x_start"])
+            y_start = mm_to_m(row["y_start"])
+            z_start = mm_to_m(row["z_start"])
+            dx = mm_to_m(row["dx"])
+            dy = mm_to_m(row["dy"])
+            dz = mm_to_m(row["dz"])
+            power = float(row["power"])
+
+            block = ET.SubElement(geom, "source2dBlock")
+            ET.SubElement(block, "name").text = name
+            ET.SubElement(block, "active").text = "true"
+
+            # Use start coordinates directly for location
+            location = ET.SubElement(block, "location")
+            ET.SubElement(location, "x").text = f"{x_start:.6f}"
+            ET.SubElement(location, "y").text = f"{y_start:.6f}"
+            ET.SubElement(location, "z").text = f"{z_start:.6f}"
+
+            size = ET.SubElement(block, "size")
+            ET.SubElement(size, "x").text = f"{dx:.6f}"
+            ET.SubElement(size, "y").text = f"{dy:.6f}"
+            ET.SubElement(size, "z").text = f"{dz:.6f}"
+
+            ET.SubElement(block, "plane").text = "+xy"
+            ET.SubElement(block, "powerDissipation").text = f"{power:.6f}"
+
+    # Beautify output
+    xml_str = ET.tostring(root, encoding="utf-8")
+    pretty = xml.dom.minidom.parseString(xml_str).toprettyxml(indent="  ")
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(pretty)
+
+# Example usage:
+# create_ecxml_from_csv("heat_sources.csv", "output.ecxml")
