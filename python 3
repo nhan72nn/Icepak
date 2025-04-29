@@ -1,0 +1,80 @@
+import csv
+import xml.etree.ElementTree as ET
+import xml.dom.minidom
+
+def mm_to_m(val_str):
+    return float(val_str) / 1000.0
+
+def create_clean_ecxml(csv_path, output_path):
+    root = ET.Element("neutralXML")
+
+    ET.SubElement(root, "name").text = "dfsi units W/m2"
+    ET.SubElement(root, "producer").text = "Icepak"
+
+    # Solution domain
+    sol_domain = ET.SubElement(root, "solutionDomain")
+    loc = ET.SubElement(sol_domain, "location")
+    ET.SubElement(loc, "x").text = "0.0"
+    ET.SubElement(loc, "y").text = "0.0"
+    ET.SubElement(loc, "z").text = "0.0"
+
+    size = ET.SubElement(sol_domain, "size")
+    ET.SubElement(size, "x").text = "0.2"
+    ET.SubElement(size, "y").text = "0.2"
+    ET.SubElement(size, "z").text = "0.001"  # Thin domain for 2D
+
+    ET.SubElement(root, "materials")  # Empty materials block
+
+    # Geometry
+    geometry = ET.SubElement(root, "geometry")
+    assembly = ET.SubElement(geometry, "assembly")
+    ET.SubElement(assembly, "name").text = "G-die-generated"
+    ET.SubElement(assembly, "active").text = "true"
+    geom = ET.SubElement(assembly, "geometry")
+
+    with open(csv_path, newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            if len(row) < 7:
+                continue  # Skip incomplete
+
+            name = row[0].strip()
+            x1 = mm_to_m(row[1])
+            y1 = mm_to_m(row[2])
+            x2 = mm_to_m(row[3])
+            y2 = mm_to_m(row[4])
+            z = mm_to_m(row[5])
+            power = float(row[6])
+
+            cx = (x1 + x2) / 2
+            cy = (y1 + y2) / 2
+            sx = abs(x2 - x1)
+            sy = abs(y2 - y1)
+
+            block = ET.SubElement(geom, "source2dBlock")
+            ET.SubElement(block, "name").text = name
+            ET.SubElement(block, "active").text = "true"
+
+            location = ET.SubElement(block, "location")
+            ET.SubElement(location, "x").text = f"{cx:.6f}"
+            ET.SubElement(location, "y").text = f"{cy:.6f}"
+            ET.SubElement(location, "z").text = f"{z:.6f}"
+
+            size = ET.SubElement(block, "size")
+            ET.SubElement(size, "x").text = f"{sx:.6f}"
+            ET.SubElement(size, "y").text = f"{sy:.6f}"
+            ET.SubElement(size, "z").text = "0.001"  # Thin, but not zero
+
+            ET.SubElement(block, "plane").text = "+xy"
+            ET.SubElement(block, "powerDissipation").text = f"{power:.6f}"
+
+    # Beautify XML output
+    rough_string = ET.tostring(root, 'utf-8')
+    parsed = xml.dom.minidom.parseString(rough_string)
+    pretty_xml = parsed.toprettyxml(indent="  ")
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(pretty_xml)
+
+# Example usage:
+# create_clean_ecxml("heat_sources.csv", "clean_output.ecxml")
