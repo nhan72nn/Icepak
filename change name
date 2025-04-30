@@ -1,0 +1,28 @@
+from pyaedt import Icepak, Desktop
+
+def rename_assembly_objects_with_prefix(project_path, design_name, assembly_prefix, new_prefix):
+    # Launch Icepak in non-graphical mode
+    desktop = Desktop(specified_version="2024.2", non_graphical=True, new_desktop_session=True)
+    ipk = Icepak(project_path=project_path, design_name=design_name)
+
+    renamed_count = 0
+
+    for obj in ipk.modeler.objects:
+        if obj.name.startswith(assembly_prefix):
+            new_name = new_prefix + obj.name
+            ipk.modeler.rename_object(obj.name, new_name)
+            print(f"Renamed: {obj.name} -> {new_name}")
+            renamed_count += 1
+
+    print(f"\nTotal renamed objects: {renamed_count}")
+    ipk.save_project()
+    ipk.release_desktop()
+
+# === Example Usage ===
+if __name__ == "__main__":
+    project_path = "your_project.aedt"       # Path to your AEDT project
+    design_name = "YourDesign"               # Icepak design name
+    assembly_prefix = "Chip1"                # Existing object name prefix to match
+    new_prefix = "Gchip1_"                   # Prefix to add to all matching object names
+
+    rename_assembly_objects_with_prefix(project_path, design_name, assembly_prefix, new_prefix)
