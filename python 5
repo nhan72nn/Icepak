@@ -1,0 +1,47 @@
+import csv
+from pyaedt import Icepak
+
+def mm_to_m(val):
+    try:
+        return float(val) / 1000.0
+    except ValueError:
+        return 0.0
+
+def assign_temp_dependent_power(project_path, design_name, csv_path):
+    # Launch Icepak and open the project
+    ipk = Icepak(project_path=project_path, design_name=design_name, specified_version="2024.2", non_graphical=False, new_desktop_session=False)
+
+    # Read CSV file
+    with open(csv_path, newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        temperature_points = [float(col) for col in reader.fieldnames if col.strip().isdigit()]
+        csvfile.seek(0)
+        next(reader)  # Skip header
+
+        for row in reader:
+            name = row["name"].strip()
+            if name not in ipk.modeler.user_defined_components:
+                print(f"Heat source '{name}' not found in the project. Skipping.")
+                continue
+
+            power_values = [float(row[str(temp)]) for temp in temperature_points]
+            dataset_name = f"{name}_temp_power_curve"
+
+            # Create dataset
+            if not ipk.dataset_exists(dataset_name):
+                ipk.create_dataset1d_design(dataset_name, temperature_points, power_values)
+
+            # Assign temperature-dependent power
+            assignment = {
+                "Type": "Temp Dep",
+                "Function": "Piecewise Linear",
+                "Values": dataset_name
+            }
+            ipk.assign_source(name, "Total Power", assignment_value=assignment)
+
+    # Save and close the project
+    ipk.save_project()
+    ipk.release_desktop()
+
+# Example usage
+assign_temp_dependent_power("path_to_your_project.aedt", "YourDesignName", "path_to_your_csv.csv")
