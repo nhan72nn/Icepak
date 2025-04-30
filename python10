@@ -1,0 +1,78 @@
+import os
+import csv
+import logging
+from pyaedt import Icepak, Desktop
+
+# Setup logging
+logging.basicConfig(
+    filename='apply_temp_dependent_power.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+def read_power_csv(csv_path):
+    with open(csv_path, newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        headers = next(reader)
+        temperatures = [float(h.strip()) for h in headers[1:] if h.strip()]
+        power_data = {}
+        for row in reader:
+            if not row or not row[0].strip():
+                continue
+            name = row[0].strip()
+            values = [float(val) for val in row[1:len(temperatures)+1]]
+            power_data[name] = values
+    return temperatures, power_data
+
+def apply_temperature_dependent_power(project_path, design_name, csv_path):
+    desktop = Desktop(specified_version="2024.2", non_graphical=True, new_desktop_session=True)
+    ipk = Icepak(project_path=project_path, design_name=design_name)
+
+    temperatures, power_data = read_power_csv(csv_path)
+    updated = []
+    missing = []
+
+    for name, power_values in power_data.items():
+        if name not in ipk.modeler.user_defined_components:
+            logging.warning(f"Missing heat source: {name}")
+            missing.append(name)
+            continue
+
+        dataset_name = f"{name}_temp_curve"
+        if not ipk.dataset_exists(dataset_name):
+            ipk.create_dataset1d_design(dataset_name, temperatures, power_values)
+            logging.info(f"Dataset created: {dataset_name}")
+
+        assignment = {
+            "Type": "Temp Dep",
+            "Function": "Piecewise Linear",
+            "Values": dataset_name
+        }
+
+        try:
+            ipk.assign_source(name, "Total Power", assignment_value=assignment)
+            logging.info(f"Assigned temperature-dependent power to: {name}")
+            updated.append(name)
+        except Exception as e:
+            logging.error(f"Error assigning power to {name}: {e}")
+
+    ipk.save_project()
+    ipk.release_desktop()
+
+    # Print summary
+    print("\nSummary:")
+    print(f"Total heat sources processed in CSV: {len(power_data)}")
+    print(f"Heat sources successfully updated: {len(updated)}")
+    print(f"Heat sources missing in project: {len(missing)}")
+    if missing:
+        print("Missing heat sources:")
+        for m in missing:
+            print(f"  - {m}")
+
+# === Example usage ===
+if __name__ == "__main__":
+    project_path = "your_project.aedt"       # Replace with your actual .aedt project path
+    design_name = "YourDesign"               # Replace with your Icepak design name
+    csv_path = "power_curve_data.csv"        # Replace with your CSV file path
+
+    apply_temperature_dependent_power(project_path, design_name, csv_path)
