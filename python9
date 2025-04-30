@@ -1,0 +1,88 @@
+import os
+import csv
+import logging
+from pyaedt import Icepak, Desktop
+
+# Configure logging
+logging.basicConfig(
+    filename='apply_temp_dependent_power.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+def read_power_csv(csv_path):
+    """
+    Reads the CSV file and returns temperature points and power data.
+    """
+    try:
+        with open(csv_path, newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            headers = next(reader)
+            temperature_points = [float(temp) for temp in headers[1:]]
+            power_data = {}
+            for row in reader:
+                if not row:
+                    continue  # Skip empty rows
+                name = row[0].strip()
+                if not name:
+                    continue  # Skip rows without a name
+                power_values = [float(val) for val in row[1:]]
+                power_data[name] = power_values
+        logging.info(f"Successfully read CSV file: {csv_path}")
+        return temperature_points, power_data
+    except Exception as e:
+        logging.error(f"Error reading CSV file {csv_path}: {e}")
+        raise
+
+def apply_temperature_dependent_power(project_path, design_name, csv_path):
+    """
+    Applies temperature-dependent power curves to heat sources in the Icepak project.
+    """
+    try:
+        # Launch AEDT in non-graphical mode
+        d = Desktop(specified_version="2024.2", non_graphical=True, new_desktop_session=True)
+        ipk = Icepak(project_path=project_path, design_name=design_name)
+
+        temperature_points, power_data = read_power_csv(csv_path)
+
+        for name, power_values in power_data.items():
+            if name not in ipk.modeler.user_defined_components:
+                logging.warning(f"Heat source '{name}' not found in the project. Skipping.")
+                continue
+
+            dataset_name = f"{name}_temp_power_curve"
+            if not ipk.dataset_exists(dataset_name):
+                try:
+                    ipk.create_dataset1d_design(dataset_name, temperature_points, power_values)
+                    logging.info(f"Created dataset '{dataset_name}' for heat source '{name}'.")
+                except Exception as e:
+                    logging.error(f"Failed to create dataset '{dataset_name}' for '{name}': {e}")
+                    continue
+
+            assignment = {
+                "Type": "Temp Dep",
+                "Function": "Piecewise Linear",
+                "Values": dataset_name
+            }
+            try:
+                ipk.assign_source(name, "Total Power", assignment_value=assignment)
+                logging.info(f"Assigned temperature-dependent power to heat source '{name}'.")
+            except Exception as e:
+                logging.error(f"Failed to assign power to heat source '{name}': {e}")
+                continue
+
+        ipk.save_project()
+        logging.info(f"Project '{design_name}' saved successfully.")
+        ipk.release_desktop()
+        logging.info("Released AEDT desktop session.")
+    except Exception as e:
+        logging.error(f"An error occurred while applying temperature-dependent power: {e}")
+        raise
+
+# Example usage
+if __name__ == "__main__":
+    project_path = "path_to_your_project.aedt"  # Replace with your project path
+    design_name = "YourDesignName"              # Replace with your design name
+    csv_path = "path_to_your_csv_file.csv"      # Replace with your CSV file path
+
+    apply_temperature_dependent_power(project_path, design_name, csv_path)
