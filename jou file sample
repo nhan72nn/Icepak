@@ -24,3 +24,56 @@ command = f'"{icepak_path}" -batch -ng -jou "{jou_file}"'
 
 # Execute the command
 os.system(command)
+
+
+
+
+
+import os
+import subprocess
+
+# Define the journal file content with enclosure and meshing
+jou_content = """
+# Icepak Journal File for Simple Block Setup with Enclosure
+(load-project "new_project")
+(create-enclosure "enclosure1" (dimensions 0.5 0.5 0.5) (position -0.25 -0.25 -0.25))
+(create-block "block1" (dimensions 0.1 0.1 0.1) (position 0 0 0))
+(set-material "block1" "Aluminum")
+(assign-power "block1" 10) ; 10W heat source
+
+; Set up meshing parameters
+(set-meshing-params 
+  (global-mesh-size 0.01) 
+  (mesh-type "hex-dominant") 
+  (min-elements-in-gap 3) 
+  (max-size-ratio 2)
+)
+(initialize-mesh)
+(generate-mesh)
+
+; Set solution settings
+(set-solution-settings 
+  (convergence-criteria 1e-6) 
+  (max-iterations 100)
+  (flow-regime "laminar")
+)
+(solve)
+(save-project "output_project")
+"""
+
+# Write the .jou file
+with open("icepak_setup.jou", "w") as f:
+    f.write(jou_content)
+
+# Run Icepak in batch mode
+icepak_path = r"C:\Program Files\AnsysEM\AnsysEM21.1\Win64\icepak.exe"  # Update to your Icepak path
+jou_file = os.path.abspath("icepak_setup.jou")
+
+# Use subprocess.run to execute the command
+command = [icepak_path, "-batch", "-ng", "-jou", jou_file]
+try:
+    subprocess.run(command, check=True)
+    print("Simulation completed successfully.")
+except subprocess.CalledProcessError as e:
+    print(f"Error running Icepak: {e}")
+    print("Check the Icepak log file for details (e.g., icepak.log or output_project.log).")
