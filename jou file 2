@@ -240,3 +240,74 @@ thread.join()
 for fn in (initial_trz, solved_ipk, solved_trz):
     status = "FOUND" if os.path.exists(fn) else "MISSING"
     print(f"[{status}] {fn}")
+
+
+import os, subprocess, sys, threading
+
+# 1) Filenames
+jou_name   = "simple_block.jou"
+initial_trz = "simple_block_initial.trz"
+solved_ipk  = "simple_block_solved.ipk"
+solved_trz  = "simple_block_solved.trz"
+
+# 2) Write the journal
+jou = f"""
+/file/new
+/file/pack,{initial_trz}
+
+/prep7
+/unit,SI
+/geometry,block 10,10,10,0,0,0
+/mesh/auto/volume
+/mesh/generate
+/define/material,aluminum
+/material/list
+/boundary/modify,*,convection-coeff,10
+/boundary/modify,*,ambient-temperature,300
+/solve/initialize/initialize-flow
+/solve/iterate,100
+/file/save-project,{solved_ipk}
+/file/pack,{solved_trz}
+/exit
+""".strip()
+
+with open(jou_name, "w") as f:
+    f.write(jou)
+print(f"[INFO] Journal written to {jou_name}")
+
+# 3) Point to the real solver EXE
+solver_exe = r"C:\Program Files\ANSYS Inc\v241\Icepak\bin\AnsysEM.exe"
+
+# 4) Build the command
+cmd = [
+    solver_exe,
+    "-b",               # batch
+    "-R", jou_name,     # run this journal
+    "-Distributed",     # use distributed solver
+    "-machinelist",     # define cores
+    "list=localhost:1:4",
+    "-monitor"          # stream progress
+]
+
+print("[INFO] Launching AnsysEM.exe …")
+proc = subprocess.Popen(cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1)
+
+# 5) Stream output so you see iterations in real time
+def stream(pipe):
+    for line in iter(pipe.readline, ""):
+        sys.stdout.write(line)
+    pipe.close()
+
+t = threading.Thread(target=stream, args=(proc.stdout,))
+t.start()
+proc.wait()
+t.join()
+
+# 6) Verify outputs
+for fn in (initial_trz, solved_ipk, solved_trz):
+    print(f"[{'OK' if os.path.exists(fn) else 'MISSING'}] {fn}")
+
