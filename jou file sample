@@ -1,0 +1,26 @@
+import os
+
+# Define the journal file content
+jou_content = """
+# Icepak Journal File for Simple Block Setup
+(load-project "new_project")
+(create-block "block1" (dimensions 0.1 0.1 0.1) (position 0 0 0))
+(set-material "block1" "Aluminum")
+(assign-power "block1" 10) ; 10W heat source
+(set-solution-settings (convergence-criteria 1e-6) (max-iterations 100))
+(generate-mesh)
+(solve)
+(save-project "output_project")
+"""
+
+# Write the .jou file
+with open("icepak_setup.jou", "w") as f:
+    f.write(jou_content)
+
+# Run Icepak in batch mode to execute the .jou file
+icepak_path = r"C:\Program Files\AnsysEM\AnsysEM21.1\Win64\icepak.exe"  # Update to your Icepak path
+jou_file = os.path.abspath("icepak_setup.jou")
+command = f'"{icepak_path}" -batch -ng -jou "{jou_file}"'
+
+# Execute the command
+os.system(command)
