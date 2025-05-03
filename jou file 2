@@ -158,3 +158,85 @@ if os.path.exists(project_ipk):
     print(f"[SUCCESS] Solved project saved to '{project_ipk}'")
 else:
     print("[ERROR] Solved project not found—check logs above.")
+
+
+
+
+
+import os
+import subprocess
+import sys
+import threading
+
+# Filenames
+jou_name          = "simple_block.jou"
+initial_trz       = "simple_block_initial.trz"
+solved_ipk        = "simple_block_solved.ipk"
+solved_trz        = "simple_block_solved.trz"
+icepak_launcher   = r"C:\Program Files\ANSYS Inc\v241\Icepak\bin\icepak24.2win64.bat"
+
+# 1) Write the updated journal file
+jou_contents = """
+/file/new
+/file/pack,{initial_trz}
+
+/prep7
+/unit,SI
+
+/geometry,block
+10,10,10,0,0,0
+
+/mesh/auto/volume
+/mesh/generate
+
+/define/material,aluminum
+/material/list
+
+/boundary/modify,*,convection-coeff,10
+/boundary/modify,*,ambient-temperature,300
+
+/solve/initialize/initialize-flow
+/solve/iterate,100
+
+/file/save-project,{solved_ipk}
+/file/pack,{solved_trz}
+
+/exit
+""".strip().format(
+    initial_trz=initial_trz,
+    solved_ipk=solved_ipk,
+    solved_trz=solved_trz
+)
+
+with open(jou_name, "w") as f:
+    f.write(jou_contents)
+print(f"[INFO] Written journal '{jou_name}'.")
+
+# 2) Launch Icepak in batch mode on 4 cores, streaming output
+cmd = [
+    icepak_launcher,
+    "-BatchSolve", jou_name,
+    "-Distributed",
+    "-machinelist", "list=localhost:1:4",
+    "-monitor"
+]
+
+print("[INFO] Starting Icepak (4 cores, monitoring)...")
+proc = subprocess.Popen(
+    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+)
+
+def stream(pipe):
+    for line in iter(pipe.readline, ''):
+        sys.stdout.write(line)
+    pipe.close()
+
+thread = threading.Thread(target=stream, args=(proc.stdout,))
+thread.start()
+proc.wait()
+thread.join()
+
+# 3) Check for outputs
+for fn in (initial_trz, solved_ipk, solved_trz):
+    status = "FOUND" if os.path.exists(fn) else "MISSING"
+    print(f"[{status}] {fn}")
