@@ -311,3 +311,116 @@ t.join()
 for fn in (initial_trz, solved_ipk, solved_trz):
     print(f"[{'OK' if os.path.exists(fn) else 'MISSING'}] {fn}")
 
+
+
+
+
+import os
+import subprocess
+import sys
+import threading
+import glob
+
+# ——— Helpers to locate the ANSYS solver ———
+def find_ansys_executable():
+    """
+    Search common ANSYS install dirs for either AnsysEM.exe or icepak24.2win64.bat.
+    Returns full path to the first one found.
+    """
+    # Adjust versions here if you know them (e.g. v241, v240, etc.)
+    base = r"C:\Program Files\ANSYS Inc"
+    patterns = [
+        os.path.join(base, "*", "Icepak", "bin", "AnsysEM.exe"),
+        os.path.join(base, "*", "Icepak", "bin", "icepak24.2win64.bat"),
+    ]
+    for pat in patterns:
+        for path in glob.glob(pat):
+            return path
+    return None
+
+solver_path = find_ansys_executable()
+if not solver_path:
+    sys.exit(
+        "\nERROR: Couldn’t find AnsysEM.exe or icepak24.2win64.bat in\n"
+        "       C:\\Program Files\\ANSYS Inc\\<version>\\Icepak\\bin\n"
+        "Please install Icepak 2024R2 or update the script to point at your solver.\n"
+    )
+
+print(f"[INFO] Using solver at: {solver_path}")
+
+# ——— Filenames ———
+jou_name     = "simple_block.jou"
+initial_trz  = "simple_block_initial.trz"
+solved_ipk   = "simple_block_solved.ipk"
+solved_trz   = "simple_block_solved.trz"
+
+# ——— Write out the journal ———
+jou_contents = f"""
+/file/new
+/file/pack,{initial_trz}
+
+/prep7
+/unit,SI
+/geometry,block 10,10,10,0,0,0
+/mesh/auto/volume
+/mesh/generate
+
+/define/material,aluminum
+/material/list
+/boundary/modify,*,convection-coeff,10
+/boundary/modify,*,ambient-temperature,300
+
+/solve/initialize/initialize-flow
+/solve/iterate,100
+
+/file/save-project,{solved_ipk}
+/file/pack,{solved_trz}
+/exit
+""".strip()
+
+with open(jou_name, "w") as f:
+    f.write(jou_contents)
+print(f"[INFO] Journal written to: {jou_name}")
+
+# ——— Build the batch command ———
+# If it's the .exe, we use -b -R; if it's the .bat, we use -BatchSolve
+name = os.path.basename(solver_path).lower()
+if name == "ansysem.exe":
+    cmd = [
+        solver_path,
+        "-b",
+        "-R", jou_name,
+        "-Distributed",
+        "-machinelist", "list=localhost:1:4",
+        "-monitor"
+    ]
+else:
+    # it's the icepak24.2win64.bat wrapper
+    cmd = [
+        solver_path,
+        "-BatchSolve", jou_name,
+        "-Distributed",
+        "-machinelist", "list=localhost:1:4",
+        "-monitor"
+    ]
+
+print("[INFO] Launching ANSYS in batch mode …")
+proc = subprocess.Popen(
+    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+)
+
+# ——— Stream the output live ———
+def stream(pipe):
+    for line in iter(pipe.readline, ""):
+        sys.stdout.write(line)
+    pipe.close()
+
+t = threading.Thread(target=stream, args=(proc.stdout,))
+t.start()
+proc.wait()
+t.join()
+
+# ——— Check results ———
+for fn in (initial_trz, solved_ipk, solved_trz):
+    status = "OK" if os.path.exists(fn) else "MISSING"
+    print(f"[{status}] {fn}")
