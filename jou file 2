@@ -424,3 +424,107 @@ t.join()
 for fn in (initial_trz, solved_ipk, solved_trz):
     status = "OK" if os.path.exists(fn) else "MISSING"
     print(f"[{status}] {fn}")
+
+
+
+
+
+
+/file/new
+;; pack the blank project
+/file/pack,simple_block_initial.trz
+
+/prep7
+/unit,SI
+
+;; Geometry: a 10×10×10 mm block
+/geometry,block
+10,10,10,0,0,0
+
+;; Mesh
+/mesh/auto/volume
+/mesh/generate
+
+;; Material: aluminum (library)
+/define/material,aluminum
+/material/list
+
+;; Convection on all walls: h = 10 W/m²K, Tamb = 300 K
+/boundary/modify,*,convection-coeff,10
+/boundary/modify,*,ambient-temperature,300
+
+;; Solve 100 iterations
+/solve/initialize/initialize-flow
+/solve/iterate,100
+
+;; Save solved project
+/file/save-project,simple_block_solved.ipk
+;; Pack solved project
+/file/pack,simple_block_solved.trz
+
+/exit
+
+
+
+
+
+import os
+import subprocess
+import sys
+import threading
+
+# ——— User configuration ———
+# Point this at the batch-wrapper for Classic Icepak 2024 R2:
+icepak_bat = r"C:\Program Files\ANSYS Inc\v241\Icepak\bin\icepak24.2win64.bat"
+
+# Names of your files
+jou_name      = "simple_block.jou"
+initial_trz   = "simple_block_initial.trz"
+solved_ipk    = "simple_block_solved.ipk"
+solved_trz    = "simple_block_solved.trz"
+
+# ——— 1) Verify we can see the wrapper ———
+if not os.path.isfile(icepak_bat):
+    sys.exit(f"ERROR: Cannot find '{icepak_bat}'. Check your Icepak install path.")
+
+# ——— 2) Build the batch command ———
+#   -BatchSolve   tells the wrapper to run your journal
+#   -Distributed + -machinelist instruct a 4-core solve
+#   -monitor      streams solver progress to stdout
+cmd = [
+    icepak_bat,
+    "-BatchSolve", jou_name,
+    "-Distributed",
+    "-machinelist", "list=localhost:1:4",
+    "-monitor"
+]
+
+print(f"[INFO] Running Icepak Classic in batch mode:\n  {' '.join(cmd)}\n")
+
+# ——— 3) Launch & stream output ———
+proc = subprocess.Popen(
+    cmd,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+    bufsize=1
+)
+
+def stream(pipe):
+    for line in iter(pipe.readline, ""):
+        # Print each line from Icepak as it appears
+        sys.stdout.write(line)
+    pipe.close()
+
+thread = threading.Thread(target=stream, args=(proc.stdout,))
+thread.start()
+proc.wait()
+thread.join()
+
+# ——— 4) Report results ———
+print("\n=== File Check ===")
+for fname in (initial_trz, solved_ipk, solved_trz):
+    status = "FOUND" if os.path.exists(fname) else "MISSING"
+    print(f"  [{status}] {fname}")
+
+
