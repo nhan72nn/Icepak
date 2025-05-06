@@ -153,3 +153,101 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+
+
+
+import pyvisa
+import time
+import csv
+from datetime import datetime
+
+# === USER CONFIGURATION ===
+VISA_ADDRESS   = 'USB0::0x049F::0xA018::MY12345678::INSTR'  # ← update for your serial#
+TEMP_CHANNELS  = list(range(1, 11))
+VOLT_CHANNELS  = list(range(11, 21))
+INTERVAL_SEC   = 5
+CSV_FILENAME   = 'fluke1586a_log.csv'
+TXT_FILENAME   = 'fluke1586a_log.txt'
+
+def setup_instrument(rm):
+    inst = rm.open_resource(VISA_ADDRESS)
+    inst.timeout = 5000  # ms
+    
+    inst.write('*RST')        # factory reset
+    inst.write('*CLS')        # clear status
+    
+    # configure thermocouple T on ch1–10
+    inst.write(f'CONF:TEMP TC,T (@{",".join(map(str, TEMP_CHANNELS))})')
+    # configure DC volts auto-range on ch11–20
+    inst.write(f'CONF:VOLT:DC AUTO (@{",".join(map(str, VOLT_CHANNELS))})')
+    
+    return inst
+
+def query_channels(inst, chans):
+    """Query a list of channels in one go; retries once on failure."""
+    chan_list = ",".join(str(ch) for ch in chans)
+    cmd = f'FETC? (@{chan_list})'
+    try:
+        raw = inst.query(cmd)
+        return [float(x) for x in raw.strip().split(',')]
+    except pyvisa.VisaIOError as e:
+        # retry once
+        time.sleep(0.1)
+        raw = inst.query(cmd)
+        return [float(x) for x in raw.strip().split(',')]
+
+def main():
+    rm   = pyvisa.ResourceManager()
+    inst = setup_instrument(rm)
+    
+    # CSV header
+    header = ['timestamp','unix_time'] + \
+             [f'T{ch}' for ch in TEMP_CHANNELS] + \
+             [f'V{ch}' for ch in VOLT_CHANNELS]
+    
+    # create CSV if needed
+    try:
+        with open(CSV_FILENAME, 'x', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(header)
+    except FileExistsError:
+        pass
+    
+    print(f"Logging every {INTERVAL_SEC}s. Ctrl+C to stop.")
+    
+    try:
+        while True:
+            now     = datetime.now()
+            ts_str  = now.strftime('%Y-%m-%d %H:%M:%S')
+            unix_ts = f"{now.timestamp():.3f}"
+            
+            # trigger a new set of conversions
+            inst.write('INIT')
+            
+            # read thermocouples, then volts
+            t_vals = query_channels(inst, TEMP_CHANNELS)
+            v_vals = query_channels(inst, VOLT_CHANNELS)
+            
+            row = [ts_str, unix_ts] + t_vals + v_vals
+            
+            # append to CSV
+            with open(CSV_FILENAME, 'a', newline='') as f:
+                csv.writer(f).writerow(row)
+            # append to TXT
+            with open(TXT_FILENAME, 'a') as f:
+                f.write('\t'.join(str(x) for x in row) + '\n')
+            
+            time.sleep(INTERVAL_SEC)
+    
+    except KeyboardInterrupt:
+        print("\nStopped by user.")
+    except Exception as err:
+        print(f"\nError during measurement: {err}")
+    finally:
+        inst.close()
+        rm.close()
+
+if __name__ == '__main__':
+    main()
