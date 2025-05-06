@@ -63,3 +63,93 @@ def create_ecxml_from_csv(csv_path, output_path):
 
 # Example usage:
 # create_ecxml_from_csv("input.csv", "output.ecxml")
+
+
+
+
+import pyvisa
+import time
+import csv
+from datetime import datetime
+
+# === CONFIGURATION ===
+VISA_ADDRESS = 'USB0::0x049F::0xA018::MY12345678::INSTR'  # replace with your instrument’s VISA ID
+TEMP_CH_RANGE = '(@1:10)'
+VOLT_CH_RANGE = '(@11:20)'
+INTERVAL_SEC = 5
+CSV_FILENAME = 'fluke1586a_log.csv'
+TXT_FILENAME = 'fluke1586a_log.txt'
+
+def setup_instrument(rm):
+    inst = rm.open_resource(VISA_ADDRESS)
+    inst.timeout = 5000  # ms
+    
+    # Reset and clear
+    inst.write('*RST')
+    inst.write('*CLS')
+    
+    # Configure channels 1–10 as Type T thermocouples
+    inst.write(f'CONF:TEMP TC,T{TEMP_CH_RANGE}')
+    
+    # Configure channels 11–20 as DC volts (auto range)
+    inst.write(f'CONF:VOLT:DC AUTO{VOLT_CH_RANGE}')
+    
+    # Turn on data buffering if desired (optional)
+    # inst.write('BUFON')
+    
+    return inst
+
+def main():
+    rm = pyvisa.ResourceManager()
+    inst = setup_instrument(rm)
+    
+    # Prepare CSV file with header if not exists
+    header = ['timestamp', 'unix_time'] + \
+             [f'T{ch}' for ch in range(1, 11)] + \
+             [f'V{ch}' for ch in range(11, 21)]
+    try:
+        with open(CSV_FILENAME, 'x', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(header)
+    except FileExistsError:
+        pass  # already exists
+    
+    print(f"Logging to {CSV_FILENAME} and {TXT_FILENAME}. Press Ctrl+C to stop.")
+    
+    try:
+        while True:
+            # Human-readable and Unix timestamp
+            now = datetime.now()
+            ts_str = now.strftime('%Y-%m-%d %H:%M:%S')
+            unix_ts = f"{now.timestamp():.3f}"
+            
+            # Trigger a single-shot read of all channels
+            # This assumes the instrument supports a combined query
+            # Otherwise you can query TEMP and VOLT separately
+            raw = inst.query(f'FETC? {TEMP_CH_RANGE},{VOLT_CH_RANGE}')
+            # raw comes back like: "+23.123,+23.456,...,+0.0012,+0.0013,..."
+            values = [v.strip() for v in raw.split(',')]
+            
+            # Compose row
+            row = [ts_str, unix_ts] + values
+            
+            # Append to CSV
+            with open(CSV_FILENAME, 'a', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(row)
+            
+            # Append to TXT
+            with open(TXT_FILENAME, 'a') as txtfile:
+                txtfile.write('\t'.join(row) + '\n')
+            
+            # Wait
+            time.sleep(INTERVAL_SEC)
+    
+    except KeyboardInterrupt:
+        print("\nMeasurement stopped by user.")
+    finally:
+        inst.close()
+        rm.close()
+
+if __name__ == '__main__':
+    main()
